@@ -1,0 +1,1079 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualiseur de Trajectoire GPS</title>
+    <script src='https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js'></script>
+    <link href='https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css' rel='stylesheet' />
+    <!-- Mapbox Draw pour les outils de mesure -->
+    <script src='https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.js'></script>
+    <link rel='stylesheet' href='https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.css'
+        type='text/css' />
+    <!-- Turf.js pour les calculs géométriques -->
+    <script src='https://unpkg.com/@turf/turf@6/turf.min.js'></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+        }
+
+        .header {
+            background-color: #2faf49;
+            color: white;
+            padding: 1rem;
+            text-align: center;
+        }
+
+        .controls {
+            padding: 1rem;
+            background-color: white;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .file-input-container {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .file-input {
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .stats {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .stat-item {
+            padding: 0.5rem;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+
+        #map {
+            height: calc(100vh - 120px);
+            width: 100%;
+        }
+
+        .info-panel {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: white;
+            padding: 1rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            max-width: 300px;
+            z-index: 1000;
+        }
+
+        .error {
+            color: #d32f2f;
+            background-color: #ffebee;
+            padding: 0.5rem;
+            border-radius: 4px;
+            margin: 0.5rem 0;
+        }
+
+        .success {
+            color: #388e3c;
+            background-color: #e8f5e8;
+            padding: 0.5rem;
+            border-radius: 4px;
+            margin: 0.5rem 0;
+        }
+
+        .legend {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: white;
+            padding: 1rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+            font-size: 0.9rem;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 0.5rem 0;
+            gap: 0.5rem;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 4px;
+            border-radius: 2px;
+        }
+
+        .legend-red {
+            background-color: #ef4444;
+        }
+
+        .legend-violet {
+            background-color: #8b5cf6;
+        }
+
+        .legend-light-green {
+            background-color: #10b981;
+        }
+
+        .legend-orange {
+            background-color: #f97316;
+        }
+
+        .map-controls {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: white;
+            padding: 5px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .map-control-button {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 4px;
+            background-color: #2faf49;
+            color: white;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background-color 0.2s;
+        }
+
+        .map-control-button:hover {
+            background-color: #207c33;
+        }
+
+        .map-control-button.active {
+            background-color: #28a745;
+        }
+
+        .map-control-button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+
+        .measure-info {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+            font-size: 14px;
+            min-width: 200px;
+            display: none;
+        }
+
+        .measure-result {
+            font-weight: bold;
+            color: #007cba;
+            font-size: 16px;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h1>🗺️ Visualiseur de Trajectoire GPS</h1>
+        <p>Chargez votre fichier current_path_points.txt ou used_gps_history.txt pour visualiser la trajectoire sur la
+            carte</p>
+    </div>
+
+    <div class="controls">
+        <div class="file-input-container">
+            <label for="fileInput" class="file-input">
+                📁 Choisir un fichier (.txt)
+                <input type="file" id="fileInput" accept=".txt" style="display: none;">
+            </label>
+        </div>
+
+        <div class="file-input-container" id="logFileContainer" style="display: none;">
+            <label for="logFileInput" class="file-input">
+                📊 Choisir le fichier log full.txt
+                <input type="file" id="logFileInput" accept=".txt" style="display: none;">
+            </label>
+        </div>
+
+        <div class="stats" id="stats" style="display: none;">
+            <div class="stat-item">
+                <strong>Points:</strong> <span id="pointCount">0</span>
+            </div>
+            <div class="stat-item">
+                <strong>Distance:</strong> <span id="totalDistance">0 km</span>
+            </div>
+            <div class="stat-item">
+                <strong>Durée:</strong> <span id="duration">-</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <!-- Contrôles de la carte -->
+    <div class="map-controls">
+        <button id="toggleStyle" class="map-control-button">🛰️ Satellite</button>
+    </div>
+
+    <!-- Informations de mesure -->
+    <div class="measure-info" id="measureInfo">
+        <div><strong>📏 Mesure:</strong></div>
+        <div class="measure-result" id="measureResult">Dessinez une ligne pour mesurer</div>
+        <div><small>Utilisez les outils de dessin pour mesurer, faire entrée pour voir le résultat de la mesure.</small>
+        </div>
+    </div>
+
+    <div class="info-panel" id="infoPanel" style="display: none;">
+        <h3>Informations de la trajectoire</h3>
+        <p><strong>Début:</strong> <span id="startPoint">-</span></p>
+        <p><strong>Fin:</strong> <span id="endPoint">-</span></p>
+        <p><strong>Points totaux:</strong> <span id="totalPoints">-</span></p>
+        <p><strong>Distance totale:</strong> <span id="totalDistanceInfo">-</span></p>
+    </div>
+
+    <div class="legend" id="legend" style="display: none;">
+        <h4 style="margin: 0 0 0.5rem 0;">Légende</h4>
+        <div id="legendContent">
+            <!-- Le contenu sera généré dynamiquement selon le type de fichier -->
+        </div>
+    </div>
+
+    <script>
+        // Configuration Mapbox (vous devez remplacer par votre token)
+        mapboxgl.accessToken = 'pk.eyJ1IjoidmluY2VudGxiIiwiYSI6ImNrY2F2YTA5NjF5c3kzMG8wbG5zbjk5cjcifQ.p9V3BtVZngNW1L8MRoALaw'; // Token public de démonstration
+
+        let map;
+        let trajectoryData = [];
+        let currentMapStyle = 'streets';
+        let draw; // Instance de Mapbox Draw
+
+        // Initialiser la carte
+        function initMap() {
+            map = new mapboxgl.Map({
+                container: 'map',
+                style: 'mapbox://styles/mapbox/streets-v11',
+                center: [5.4979, 51.7074], // Coordonnées par défaut (basées sur vos données)
+                zoom: 15,
+                maxZoom: 22 // Augmentation du zoom maximum
+            });
+
+            map.addControl(new mapboxgl.NavigationControl());
+            map.addControl(new mapboxgl.FullscreenControl());
+
+            // Initialiser Mapbox Draw
+            draw = new MapboxDraw({
+                displayControlsDefault: false,
+                controls: {
+                    line_string: true,
+                    polygon: true,
+                    trash: true
+                },
+                styles: [
+                    // Style pour les lignes
+                    {
+                        'id': 'gl-draw-line',
+                        'type': 'line',
+                        'filter': ['all', ['==', '$type', 'LineString'], ['!=', 'mode', 'static']],
+                        'layout': {
+                            'line-cap': 'round',
+                            'line-join': 'round'
+                        },
+                        'paint': {
+                            'line-color': '#ff0000',
+                            'line-width': 3
+                        }
+                    },
+                    // Style pour les polygones
+                    {
+                        'id': 'gl-draw-polygon-fill',
+                        'type': 'fill',
+                        'filter': ['all', ['==', '$type', 'Polygon'], ['!=', 'mode', 'static']],
+                        'paint': {
+                            'fill-color': '#ff0000',
+                            'fill-opacity': 0.1
+                        }
+                    },
+                    {
+                        'id': 'gl-draw-polygon-stroke-active',
+                        'type': 'line',
+                        'filter': ['all', ['==', '$type', 'Polygon'], ['!=', 'mode', 'static']],
+                        'layout': {
+                            'line-cap': 'round',
+                            'line-join': 'round'
+                        },
+                        'paint': {
+                            'line-color': '#ff0000',
+                            'line-width': 3
+                        }
+                    },
+                    // Style pour les points
+                    {
+                        'id': 'gl-draw-point',
+                        'type': 'circle',
+                        'filter': ['all', ['==', '$type', 'Point'], ['!=', 'mode', 'static']],
+                        'paint': {
+                            'circle-radius': 5,
+                            'circle-color': '#ff0000',
+                            'circle-stroke-width': 2,
+                            'circle-stroke-color': '#ffffff'
+                        }
+                    }
+                ]
+            });
+
+            map.addControl(draw, 'top-left');
+
+            // Initialiser les contrôles personnalisés
+            initMapControls();
+            initMeasureEvents();
+        }
+
+        // Calculer la distance entre deux points GPS
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371; // Rayon de la Terre en km
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+        }
+
+        // Initialiser les contrôles de la carte
+        function initMapControls() {
+            // Bouton de changement de style
+            document.getElementById('toggleStyle').addEventListener('click', function () {
+                if (currentMapStyle === 'streets') {
+                    map.setStyle('mapbox://styles/mapbox/satellite-streets-v12');
+                    this.textContent = '🗺️ Street';
+                    currentMapStyle = 'satellite';
+                } else {
+                    map.setStyle('mapbox://styles/mapbox/streets-v11');
+                    this.textContent = '🛰️ Satellite';
+                    currentMapStyle = 'streets';
+                }
+
+                // Redessiner la trajectoire et les outils de mesure après le changement de style
+                map.once('styledata', function () {
+                    if (trajectoryData.length > 0) {
+                        displayTrajectory();
+                    }
+                    // Réajouter le contrôle Draw après le changement de style
+                    if (draw) {
+                        map.addControl(draw, 'top-left');
+                    }
+                });
+            });
+        }
+
+        // Initialiser les événements de mesure
+        function initMeasureEvents() {
+            // Afficher le panneau de mesure quand on commence à dessiner
+            map.on('draw.create', updateMeasurements);
+            map.on('draw.update', updateMeasurements);
+            map.on('draw.delete', updateMeasurements);
+            map.on('draw.selectionchange', updateMeasurements);
+
+            // Afficher le panneau quand on sélectionne un outil
+            map.on('draw.modechange', function (e) {
+                if (e.mode === 'draw_line_string' || e.mode === 'draw_polygon') {
+                    document.getElementById('measureInfo').style.display = 'block';
+                } else if (e.mode === 'simple_select' && draw.getAll().features.length === 0) {
+                    document.getElementById('measureInfo').style.display = 'none';
+                }
+            });
+        }
+
+        // Mettre à jour les mesures
+        function updateMeasurements() {
+            const data = draw.getAll();
+            const measureResult = document.getElementById('measureResult');
+
+            if (data.features.length === 0) {
+                measureResult.textContent = 'Dessinez une ligne pour mesurer';
+                document.getElementById('measureInfo').style.display = 'none';
+                return;
+            }
+
+            document.getElementById('measureInfo').style.display = 'block';
+            let totalMeasure = '';
+
+            data.features.forEach((feature, index) => {
+                if (feature.geometry.type === 'LineString') {
+                    const length = turf.length(feature, { units: 'kilometers' });
+                    if (length < 1) {
+                        totalMeasure += `Ligne ${index + 1}: ${(length * 1000).toFixed(1)} m\n`;
+                    } else {
+                        totalMeasure += `Ligne ${index + 1}: ${length.toFixed(3)} km\n`;
+                    }
+                } else if (feature.geometry.type === 'Polygon') {
+                    const area = turf.area(feature);
+                    if (area < 10000) {
+                        totalMeasure += `Polygone ${index + 1}: ${area.toFixed(1)} m²\n`;
+                    } else {
+                        const areaKm = area / 1000000;
+                        totalMeasure += `Polygone ${index + 1}: ${areaKm.toFixed(3)} km²\n`;
+                    }
+                }
+            });
+
+            measureResult.innerHTML = totalMeasure.trim().replace(/\n/g, '<br>');
+        }
+
+        // Variables globales
+        let fileType = 'current_path'; // 'current_path' ou 'used_gps'
+        let logData = null; // Données du fichier log
+
+        // Traiter le fichier log
+        function processLogFile(content) {
+            const lines = content.split('\n');
+            logData = [];
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+
+                // Chercher les lignes avec le format: 23-07-2025 15-27-54 566769 4    29.37   7.06    -10     129.2   131.91       -10.0   off      correct     102.38    left     0.2             5.0
+                // Pattern: date heure timestamp puis les données de navigation
+                const fullNavMatch = line.match(/^(\d{2}-\d{2}-\d{4})\s+(\d{2}-\d{2}-\d{2})\s+(\d+)\s+(\d+)\s+([-\d\.]+)\s+([-\d\.]+)\s+([-\d\.]+)\s+([-\d\.]+)\s+([-\d\.]+)\s+([-\d\.]+)\s+(\w+)\s+(\w+)\s+([-\d\.]+)\s+(\w+)\s+([-\d\.]+)\s+([-\d\.]+)/);
+
+                if (fullNavMatch) {
+                    const navInfo = {
+                        date: fullNavMatch[1],
+                        time: fullNavMatch[2],
+                        timestamp: fullNavMatch[3],
+                        gpsQuality: fullNavMatch[4],
+                        rawAngle: parseFloat(fullNavMatch[5]),
+                        resAngle: parseFloat(fullNavMatch[6]),
+                        ordAngle: parseFloat(fullNavMatch[7]),
+                        sumAngle: parseFloat(fullNavMatch[8]),
+                        distance: parseFloat(fullNavMatch[9]),
+                        adapter: parseFloat(fullNavMatch[10]),
+                        smoothie: fullNavMatch[11],
+                        pointStatus: fullNavMatch[12],
+                        deviation: parseFloat(fullNavMatch[13]),
+                        side: fullNavMatch[14],
+                        centroidFactor: parseFloat(fullNavMatch[15]),
+                        cruiseFactor: parseFloat(fullNavMatch[16])
+                    };
+
+                    // Chercher la ligne "Cur:" précédente pour récupérer les coordonnées GPS
+                    for (let j = i - 1; j >= Math.max(0, i - 10); j--) {
+                        const prevLine = lines[j];
+                        const curMatch = prevLine.match(/Cur: \[([^,]+),\s*([^,]+),\s*'([^']+)'\]/);
+                        if (curMatch) {
+                            navInfo.lat = parseFloat(curMatch[1]);
+                            navInfo.lon = parseFloat(curMatch[2]);
+                            navInfo.gpsQualityFromCur = curMatch[3];
+                            break;
+                        }
+                    }
+
+                    // Ajouter à la liste même si on n'a pas trouvé de coordonnées GPS
+                    logData.push(navInfo);
+                }
+            }
+
+            console.log(`Données de log chargées: ${logData.length} lignes de navigation trouvées`);
+
+            console.log(logData);
+
+            // Rafraîchir l'affichage si des points GPS sont déjà chargés
+            if (trajectoryData.length > 0) {
+                displayTrajectory();
+            }
+        }        // Traiter le fichier chargé
+        function processFile(content) {
+            const lines = content.split('\n').filter(line => line.trim());
+            trajectoryData = [];
+            let totalDistance = 0;
+
+            // Détecter le type de fichier
+            const firstLine = lines[0];
+            if (firstLine.includes('[') && firstLine.includes(',')) {
+                fileType = 'used_gps';
+                console.log('Fichier détecté: used_gps_history.txt');
+            } else {
+                fileType = 'current_path';
+                console.log('Fichier détecté: current_path_points.txt');
+            }
+
+            lines.forEach((line, index) => {
+                let lat, lon, thirdValue;
+
+                if (fileType === 'used_gps') {
+                    // Format: [51.7073603, 5.4958172, '4', 'Origin_with_8_samples'] ou [51.7073603, 5.4958172, '4']
+                    const match = line.match(/\[([^,]+),\s*([^,]+),\s*['"]*([^,'"]+)['"]*(?:,.*)?]/);
+                    if (match) {
+                        lat = parseFloat(match[1]);
+                        lon = parseFloat(match[2]);
+                        thirdValue = match[3].trim();
+                    }
+                } else {
+                    // Format: 51.70738883796139 5.495836854300963 0.175
+                    const parts = line.trim().split(/\s+/);
+                    if (parts.length >= 3) {
+                        lat = parseFloat(parts[0]);
+                        lon = parseFloat(parts[1]);
+                        thirdValue = parseFloat(parts[2]);
+                    }
+                }
+
+                if (!isNaN(lat) && !isNaN(lon) && thirdValue !== undefined) {
+                    const point = { lat, lon, thirdValue, index, fileType };
+                    trajectoryData.push(point);
+
+                    // Calculer la distance cumulative
+                    if (index > 0 && trajectoryData.length > 1) {
+                        const prevPoint = trajectoryData[trajectoryData.length - 2];
+                        totalDistance += calculateDistance(prevPoint.lat, prevPoint.lon, lat, lon);
+                    }
+                }
+            });
+
+            if (trajectoryData.length === 0) {
+                throw new Error('Aucun point GPS valide trouvé dans le fichier');
+            }
+
+            displayTrajectory();
+            updateStats(totalDistance);
+            //showInfoPanel();
+            showLegend();
+
+            // Afficher le bouton de chargement du log si c'est un fichier used_gps
+            if (fileType === 'used_gps') {
+                document.getElementById('logFileContainer').style.display = 'flex';
+            } else {
+                document.getElementById('logFileContainer').style.display = 'none';
+            }
+        }
+
+        // Afficher la trajectoire sur la carte
+        function displayTrajectory() {
+            // Supprimer les sources et couches existantes
+            if (map.getSource('trajectory-forward') || map.getSource('trajectory-quality-good') || map.getSource('trajectory-quality-other')) {
+                // Supprimer toutes les couches possibles
+                ['trajectory-forward', 'trajectory-backward', 'trajectory-quality-good', 'trajectory-quality-other',
+                    'start-point', 'end-point'].forEach(layerId => {
+                        if (map.getLayer(layerId)) map.removeLayer(layerId);
+                    });
+
+                // Supprimer toutes les sources possibles
+                ['trajectory-forward', 'trajectory-backward', 'trajectory-quality-good', 'trajectory-quality-other',
+                    'start-point', 'end-point'].forEach(sourceId => {
+                        if (map.getSource(sourceId)) map.removeSource(sourceId);
+                    });
+            }
+
+            if (fileType === 'current_path') {
+                // Logique pour current_path_points.txt (rouge/violet selon positif/négatif)
+                const forwardSegments = [];
+                const backwardSegments = [];
+
+                for (let i = 0; i < trajectoryData.length - 1; i++) {
+                    const currentPoint = trajectoryData[i];
+                    const nextPoint = trajectoryData[i + 1];
+
+                    const segment = [
+                        [currentPoint.lon, currentPoint.lat],
+                        [nextPoint.lon, nextPoint.lat]
+                    ];
+
+                    if (currentPoint.thirdValue >= 0) {
+                        forwardSegments.push(segment);
+                    } else {
+                        backwardSegments.push(segment);
+                    }
+                }
+
+                // Ajouter les segments avance (rouge)
+                if (forwardSegments.length > 0) {
+                    map.addSource('trajectory-forward', {
+                        type: 'geojson',
+                        data: {
+                            type: 'FeatureCollection',
+                            features: forwardSegments.map(segment => ({
+                                type: 'Feature',
+                                properties: {},
+                                geometry: {
+                                    type: 'LineString',
+                                    coordinates: segment
+                                }
+                            }))
+                        }
+                    });
+
+                    map.addLayer({
+                        id: 'trajectory-forward',
+                        type: 'line',
+                        source: 'trajectory-forward',
+                        layout: {
+                            'line-join': 'round',
+                            'line-cap': 'round'
+                        },
+                        paint: {
+                            'line-color': '#ef4444',
+                            'line-width': 4
+                        }
+                    });
+                }
+
+                // Ajouter les segments recule (violet)
+                if (backwardSegments.length > 0) {
+                    map.addSource('trajectory-backward', {
+                        type: 'geojson',
+                        data: {
+                            type: 'FeatureCollection',
+                            features: backwardSegments.map(segment => ({
+                                type: 'Feature',
+                                properties: {},
+                                geometry: {
+                                    type: 'LineString',
+                                    coordinates: segment
+                                }
+                            }))
+                        }
+                    });
+
+                    map.addLayer({
+                        id: 'trajectory-backward',
+                        type: 'line',
+                        source: 'trajectory-backward',
+                        layout: {
+                            'line-join': 'round',
+                            'line-cap': 'round'
+                        },
+                        paint: {
+                            'line-color': '#8b5cf6',
+                            'line-width': 4
+                        }
+                    });
+                }
+            } else if (fileType === 'used_gps') {
+                // Logique pour used_gps_history.txt (vert clair si qualité=4, orange sinon)
+                const qualityGoodSegments = [];
+                const qualityOtherSegments = [];
+
+                for (let i = 0; i < trajectoryData.length - 1; i++) {
+                    const currentPoint = trajectoryData[i];
+                    const nextPoint = trajectoryData[i + 1];
+
+                    const segment = [
+                        [currentPoint.lon, currentPoint.lat],
+                        [nextPoint.lon, nextPoint.lat]
+                    ];
+
+                    // Utiliser la valeur du point suivant pour déterminer la couleur du segment
+                    if (nextPoint.thirdValue === '4') {
+                        qualityGoodSegments.push(segment);
+                    } else {
+                        qualityOtherSegments.push(segment);
+                    }
+                }
+
+                // Ajouter les segments qualité 4 (vert clair)
+                if (qualityGoodSegments.length > 0) {
+                    map.addSource('trajectory-quality-good', {
+                        type: 'geojson',
+                        data: {
+                            type: 'FeatureCollection',
+                            features: qualityGoodSegments.map(segment => ({
+                                type: 'Feature',
+                                properties: {},
+                                geometry: {
+                                    type: 'LineString',
+                                    coordinates: segment
+                                }
+                            }))
+                        }
+                    });
+
+                    map.addLayer({
+                        id: 'trajectory-quality-good',
+                        type: 'line',
+                        source: 'trajectory-quality-good',
+                        layout: {
+                            'line-join': 'round',
+                            'line-cap': 'round'
+                        },
+                        paint: {
+                            'line-color': '#10b981',
+                            'line-width': 4
+                        }
+                    });
+                }
+
+                // Ajouter les segments autre qualité (orange)
+                if (qualityOtherSegments.length > 0) {
+                    map.addSource('trajectory-quality-other', {
+                        type: 'geojson',
+                        data: {
+                            type: 'FeatureCollection',
+                            features: qualityOtherSegments.map(segment => ({
+                                type: 'Feature',
+                                properties: {},
+                                geometry: {
+                                    type: 'LineString',
+                                    coordinates: segment
+                                }
+                            }))
+                        }
+                    });
+
+                    map.addLayer({
+                        id: 'trajectory-quality-other',
+                        type: 'line',
+                        source: 'trajectory-quality-other',
+                        layout: {
+                            'line-join': 'round',
+                            'line-cap': 'round'
+                        },
+                        paint: {
+                            'line-color': '#f97316',
+                            'line-width': 4
+                        }
+                    });
+                }
+            }
+
+            // Ajouter le point de départ
+            if (trajectoryData.length > 0) {
+                const startPoint = trajectoryData[0];
+                map.addSource('start-point', {
+                    type: 'geojson',
+                    data: {
+                        type: 'Feature',
+                        properties: { type: 'start' },
+                        geometry: {
+                            type: 'Point',
+                            coordinates: [startPoint.lon, startPoint.lat]
+                        }
+                    }
+                });
+
+                map.addLayer({
+                    id: 'start-point',
+                    type: 'circle',
+                    source: 'start-point',
+                    paint: {
+                        'circle-radius': 8,
+                        'circle-color': '#10b981'
+                    }
+                });
+
+                // Ajouter le point d'arrivée
+                const endPoint = trajectoryData[trajectoryData.length - 1];
+                map.addSource('end-point', {
+                    type: 'geojson',
+                    data: {
+                        type: 'Feature',
+                        properties: { type: 'end' },
+                        geometry: {
+                            type: 'Point',
+                            coordinates: [endPoint.lon, endPoint.lat]
+                        }
+                    }
+                });
+
+                map.addLayer({
+                    id: 'end-point',
+                    type: 'circle',
+                    source: 'end-point',
+                    paint: {
+                        'circle-radius': 8,
+                        'circle-color': '#ef4444'
+                    }
+                });
+            }
+
+            // Ajuster la vue pour montrer toute la trajectoire
+            const bounds = new mapboxgl.LngLatBounds();
+            trajectoryData.forEach(point => bounds.extend([point.lon, point.lat]));
+            map.fitBounds(bounds, { padding: 50 });
+
+            // Ajouter des marqueurs interactifs si les données de log sont disponibles
+            if (logData && fileType === 'used_gps') {
+                addInteractiveMarkers();
+            }
+        }
+
+        // Ajouter des marqueurs interactifs avec les informations du log
+        function addInteractiveMarkers() {
+            // Supprimer les marqueurs existants
+            if (map.getSource('nav-points')) {
+                map.removeLayer('nav-points');
+                map.removeSource('nav-points');
+            }
+
+            const features = [];
+
+            trajectoryData.forEach((point, index) => {
+                // Chercher dans logData les entrées qui correspondent à ce point GPS
+                const matchingLogEntries = logData.filter(logEntry => {
+                    if (!logEntry.lat || !logEntry.lon) return false;
+
+                    // Tolérance pour la correspondance GPS (environ 1 mètre)
+                    const latDiff = Math.abs(logEntry.lat - point.lat);
+                    const lonDiff = Math.abs(logEntry.lon - point.lon);
+                    return latDiff < 0.00001 && lonDiff < 0.00001;
+                });
+
+                if (matchingLogEntries.length > 0) {
+                    // Prendre la première entrée correspondante (ou on pourrait faire une moyenne)
+                    const navInfo = matchingLogEntries[0];
+
+                    features.push({
+                        type: 'Feature',
+                        properties: {
+                            ...navInfo,
+                            lat: point.lat,
+                            lon: point.lon,
+                            index: index,
+                            matchCount: matchingLogEntries.length
+                        },
+                        geometry: {
+                            type: 'Point',
+                            coordinates: [point.lon, point.lat]
+                        }
+                    });
+                }
+            });
+
+            if (features.length > 0) {
+                map.addSource('nav-points', {
+                    type: 'geojson',
+                    data: {
+                        type: 'FeatureCollection',
+                        features: features
+                    }
+                });
+
+                map.addLayer({
+                    id: 'nav-points',
+                    type: 'circle',
+                    source: 'nav-points',
+                    paint: {
+                        'circle-radius': 3,
+                        'circle-color': '#ffffff',
+                        'circle-stroke-color': '#000000',
+                        'circle-stroke-width': 1,
+                        'circle-opacity': 0.8
+                    }
+                });
+
+                // Ajouter les événements de survol
+                map.on('mouseenter', 'nav-points', (e) => {
+                    map.getCanvas().style.cursor = 'pointer';
+
+                    const properties = e.features[0].properties;
+                    const coordinates = e.features[0].geometry.coordinates.slice();
+
+                    const popupContent = `
+                        <div style="font-family: monospace; font-size: 12px; max-width: 350px;">
+                            <h4 style="margin: 0 0 10px 0; color: #2faf49;">Informations de Navigation</h4>
+                            <table style="width: 100%; font-size: 11px;">
+                                <tr><td><strong>Date/Heure:</strong></td><td>${properties.date} ${properties.time}</td></tr>
+                                <tr><td><strong>Timestamp:</strong></td><td>${properties.timestamp}</td></tr>
+                                <tr><td><strong>GPS:</strong></td><td>[${properties.lat.toFixed(7)}, ${properties.lon.toFixed(7)}, '${properties.gpsQualityFromCur || properties.gpsQuality}']</td></tr>
+                                <tr><td><strong>Raw Angle:</strong></td><td>${properties.rawAngle}</td></tr>
+                                <tr><td><strong>Res Angle:</strong></td><td>${properties.resAngle}</td></tr>
+                                <tr><td><strong>Ord Angle:</strong></td><td>${properties.ordAngle}</td></tr>
+                                <tr><td><strong>Sum Angle:</strong></td><td>${properties.sumAngle}</td></tr>
+                                <tr><td><strong>Distance:</strong></td><td>${properties.distance}</td></tr>
+                                <tr><td><strong>Adapter:</strong></td><td>${properties.adapter}</td></tr>
+                                <tr><td><strong>Smoothie:</strong></td><td>${properties.smoothie}</td></tr>
+                                <tr><td><strong>Status:</strong></td><td>${properties.pointStatus}</td></tr>
+                                <tr><td><strong>Deviation:</strong></td><td>${properties.deviation}</td></tr>
+                                <tr><td><strong>Side:</strong></td><td>${properties.side}</td></tr>
+                                <tr><td><strong>Centroid:</strong></td><td>${properties.centroidFactor}</td></tr>
+                                <tr><td><strong>Cruise:</strong></td><td>${properties.cruiseFactor}</td></tr>
+                                ${properties.matchCount > 1 ? `<tr><td colspan="2"><em>${properties.matchCount} entrées trouvées</em></td></tr>` : ''}
+                            </table>
+                        </div>
+                    `;
+
+                    new mapboxgl.Popup()
+                        .setLngLat(coordinates)
+                        .setHTML(popupContent)
+                        .addTo(map);
+                });
+
+                map.on('mouseleave', 'nav-points', () => {
+                    map.getCanvas().style.cursor = '';
+                    // Fermer tous les popups
+                    const popups = document.getElementsByClassName('mapboxgl-popup');
+                    for (let i = popups.length - 1; i >= 0; i--) {
+                        popups[i].remove();
+                    }
+                });
+
+                console.log(`${features.length} marqueurs interactifs ajoutés sur la carte`);
+            }
+        }        // Mettre à jour les statistiques
+        function updateStats(totalDistance) {
+            document.getElementById('pointCount').textContent = trajectoryData.length;
+            document.getElementById('totalDistance').textContent = `${totalDistance.toFixed(2)} km`;
+            document.getElementById('stats').style.display = 'flex';
+
+            // Mettre à jour le panneau d'informations
+            document.getElementById('totalPoints').textContent = trajectoryData.length;
+            document.getElementById('totalDistanceInfo').textContent = `${totalDistance.toFixed(2)} km`;
+
+            if (trajectoryData.length > 0) {
+                const start = trajectoryData[0];
+                const end = trajectoryData[trajectoryData.length - 1];
+                document.getElementById('startPoint').textContent = `${start.lat.toFixed(6)}, ${start.lon.toFixed(6)}`;
+                document.getElementById('endPoint').textContent = `${end.lat.toFixed(6)}, ${end.lon.toFixed(6)}`;
+            }
+        }
+
+        // Afficher le panneau d'informations
+        function showInfoPanel() {
+            document.getElementById('infoPanel').style.display = 'block';
+        }
+
+        // Afficher la légende
+        function showLegend() {
+            const legendContent = document.getElementById('legendContent');
+
+            if (fileType === 'current_path') {
+                legendContent.innerHTML = `
+                    <div class="legend-item">
+                        <div class="legend-color legend-red"></div>
+                        <span>Avance (valeur positive)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color legend-violet"></div>
+                        <span>Recule (valeur négative)</span>
+                    </div>
+                `;
+            } else if (fileType === 'used_gps') {
+                legendContent.innerHTML = `
+                    <div class="legend-item">
+                        <div class="legend-color legend-light-green"></div>
+                        <span>Qualité GPS = 4</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color legend-orange"></div>
+                        <span>Autre qualité GPS</span>
+                    </div>
+                `;
+            }
+
+            document.getElementById('legend').style.display = 'block';
+        }
+
+        // Gestionnaire de fichier log
+        document.getElementById('logFileInput').addEventListener('change', function (event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            // Supprimer les messages précédents
+            const existingMessages = document.querySelectorAll('.error, .success');
+            existingMessages.forEach(msg => msg.remove());
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                try {
+                    processLogFile(e.target.result);
+
+                    // Message de succès
+                    const successMsg = document.createElement('div');
+                    successMsg.className = 'success';
+                    successMsg.textContent = `✅ Fichier log chargé avec succès! ${logData.length} lignes de navigation trouvées.`;
+                    document.querySelector('.controls').appendChild(successMsg);
+
+                } catch (error) {
+                    console.error('Erreur lors du traitement du fichier log:', error);
+
+                    // Message d'erreur
+                    const errorMsg = document.createElement('div');
+                    errorMsg.className = 'error';
+                    errorMsg.textContent = `❌ Erreur: ${error.message}`;
+                    document.querySelector('.controls').appendChild(errorMsg);
+                }
+            };
+
+            reader.onerror = function () {
+                const errorMsg = document.createElement('div');
+                errorMsg.className = 'error';
+                errorMsg.textContent = '❌ Erreur lors de la lecture du fichier log';
+                document.querySelector('.controls').appendChild(errorMsg);
+            };
+
+            reader.readAsText(file);
+        });
+
+        // Gestionnaire de fichier principal
+        document.getElementById('fileInput').addEventListener('change', function (event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            // Supprimer les messages précédents
+            const existingMessages = document.querySelectorAll('.error, .success');
+            existingMessages.forEach(msg => msg.remove());
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                try {
+                    processFile(e.target.result);
+
+                    // Message de succès
+                    const successMsg = document.createElement('div');
+                    successMsg.className = 'success';
+                    successMsg.textContent = `✅ Fichier chargé avec succès! ${trajectoryData.length} points GPS affichés.`;
+                    document.querySelector('.controls').appendChild(successMsg);
+
+                } catch (error) {
+                    console.error('Erreur lors du traitement du fichier:', error);
+
+                    // Message d'erreur
+                    const errorMsg = document.createElement('div');
+                    errorMsg.className = 'error';
+                    errorMsg.textContent = `❌ Erreur: ${error.message}`;
+                    document.querySelector('.controls').appendChild(errorMsg);
+                }
+            };
+
+            reader.onerror = function () {
+                const errorMsg = document.createElement('div');
+                errorMsg.className = 'error';
+                errorMsg.textContent = '❌ Erreur lors de la lecture du fichier';
+                document.querySelector('.controls').appendChild(errorMsg);
+            };
+
+            reader.readAsText(file);
+        });
+
+        // Initialiser la carte au chargement de la page
+        window.addEventListener('load', initMap);
+    </script>
+</body>
+
+</html>
