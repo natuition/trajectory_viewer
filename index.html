@@ -66,8 +66,13 @@
         }
 
         #map {
-            height: calc(100vh - 120px);
+            height: 100vh;
             width: 100%;
+            overflow: hidden;
+        }
+
+        #map .mapboxgl-canvas {
+            max-height: 100% !important;
         }
 
         .info-panel {
@@ -347,6 +352,32 @@
 
             map.addControl(new mapboxgl.NavigationControl());
             map.addControl(new mapboxgl.FullscreenControl());
+
+            // Forcer le redimensionnement de la carte après l'initialisation
+            map.on('load', function () {
+                // Calculer la hauteur disponible
+                const headerHeight = document.querySelector('.header').offsetHeight;
+                const controlsHeight = document.querySelector('.controls').offsetHeight;
+                const availableHeight = window.innerHeight - headerHeight - controlsHeight - 10;
+
+                // Forcer la hauteur du conteneur de la carte
+                const mapContainer = document.getElementById('map');
+                mapContainer.style.height = availableHeight + 'px';
+
+                // Redimensionner la carte
+                map.resize();
+            });
+
+            // Ajouter un gestionnaire de redimensionnement de fenêtre
+            window.addEventListener('resize', function () {
+                const headerHeight = document.querySelector('.header').offsetHeight;
+                const controlsHeight = document.querySelector('.controls').offsetHeight;
+                const availableHeight = window.innerHeight - headerHeight - controlsHeight - 10;
+
+                const mapContainer = document.getElementById('map');
+                mapContainer.style.height = availableHeight + 'px';
+                map.resize();
+            });
 
             // Initialiser Mapbox Draw
             draw = new MapboxDraw({
