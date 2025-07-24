@@ -25,17 +25,23 @@
         .header {
             background-color: #2faf49;
             color: white;
-            padding: 1rem;
+            padding: 0.5rem;
             text-align: center;
         }
 
+        .header h1,
+        .header p {
+            margin: 0;
+            padding: 10px;
+        }
+
         .controls {
-            padding: 1rem;
+            padding: 0.5rem;
             background-color: white;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
             display: flex;
             align-items: center;
-            gap: 1rem;
+            gap: 0.5rem;
             flex-wrap: wrap;
         }
 
@@ -100,7 +106,6 @@
             background-color: #e8f5e8;
             padding: 0.5rem;
             border-radius: 4px;
-            margin: 0.5rem 0;
         }
 
         .legend {
@@ -338,7 +343,19 @@
         let map;
         let trajectoryData = [];
         let currentMapStyle = 'streets';
-        let draw; // Instance de Mapbox Draw
+        // Fonction pour recalculer et ajuster la hauteur de la carte
+        function resizeMapToAvailableSpace() {
+            const headerHeight = document.querySelector('.header').offsetHeight;
+            const controlsHeight = document.querySelector('.controls').offsetHeight;
+            const availableHeight = window.innerHeight - headerHeight - controlsHeight - 10;
+
+            const mapContainer = document.getElementById('map');
+            mapContainer.style.height = availableHeight + 'px';
+
+            if (map) {
+                map.resize();
+            }
+        }
 
         // Initialiser la carte
         function initMap() {
@@ -355,29 +372,11 @@
 
             // Forcer le redimensionnement de la carte après l'initialisation
             map.on('load', function () {
-                // Calculer la hauteur disponible
-                const headerHeight = document.querySelector('.header').offsetHeight;
-                const controlsHeight = document.querySelector('.controls').offsetHeight;
-                const availableHeight = window.innerHeight - headerHeight - controlsHeight - 10;
-
-                // Forcer la hauteur du conteneur de la carte
-                const mapContainer = document.getElementById('map');
-                mapContainer.style.height = availableHeight + 'px';
-
-                // Redimensionner la carte
-                map.resize();
+                resizeMapToAvailableSpace();
             });
 
             // Ajouter un gestionnaire de redimensionnement de fenêtre
-            window.addEventListener('resize', function () {
-                const headerHeight = document.querySelector('.header').offsetHeight;
-                const controlsHeight = document.querySelector('.controls').offsetHeight;
-                const availableHeight = window.innerHeight - headerHeight - controlsHeight - 10;
-
-                const mapContainer = document.getElementById('map');
-                mapContainer.style.height = availableHeight + 'px';
-                map.resize();
-            });
+            window.addEventListener('resize', resizeMapToAvailableSpace);
 
             // Initialiser Mapbox Draw
             draw = new MapboxDraw({
@@ -626,6 +625,11 @@
 
                     // Masquer le loader
                     hideLoader();
+
+                    // Recalculer la hauteur de la carte après le traitement du log
+                    setTimeout(() => {
+                        resizeMapToAvailableSpace();
+                    }, 100);
                 }, 500);
             }, 100);
         }        // Traiter le fichier chargé
@@ -685,6 +689,11 @@
             updateStats(totalDistance);
             //showInfoPanel();
             showLegend();
+
+            // Recalculer la hauteur de la carte après l'affichage des données
+            setTimeout(() => {
+                resizeMapToAvailableSpace();
+            }, 100);
 
             // Afficher le bouton de chargement du log si c'est un fichier used_gps
             if (fileType === 'used_gps') {
@@ -1144,6 +1153,11 @@
                         successMsg.className = 'success';
                         successMsg.textContent = `✅ Fichier log chargé avec succès! ${logData.length} lignes de navigation trouvées.`;
                         document.querySelector('.controls').appendChild(successMsg);
+
+                        // Recalculer la hauteur de la carte après l'affichage du message
+                        setTimeout(() => {
+                            resizeMapToAvailableSpace();
+                        }, 100);
                     }, 600);
 
                 } catch (error) {
@@ -1188,6 +1202,11 @@
                     successMsg.className = 'success';
                     successMsg.textContent = `✅ Fichier chargé avec succès! ${trajectoryData.length} points GPS affichés.`;
                     document.querySelector('.controls').appendChild(successMsg);
+
+                    // Recalculer la hauteur de la carte après l'affichage du message
+                    setTimeout(() => {
+                        resizeMapToAvailableSpace();
+                    }, 100);
 
                 } catch (error) {
                     console.error('Erreur lors du traitement du fichier:', error);
