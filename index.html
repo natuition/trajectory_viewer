@@ -196,6 +196,61 @@
             font-size: 16px;
             margin-top: 5px;
         }
+
+        /* Loader pour le traitement des fichiers */
+        .loader-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+
+        .loader-content {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            max-width: 400px;
+        }
+
+        .loader-spinner {
+            width: 60px;
+            height: 60px;
+            border: 6px solid #f3f3f3;
+            border-top: 6px solid #2faf49;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .loader-text {
+            font-size: 18px;
+            color: #333;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+
+        .loader-subtext {
+            font-size: 14px;
+            color: #666;
+        }
     </style>
 </head>
 
@@ -228,13 +283,19 @@
             <div class="stat-item">
                 <strong>Distance:</strong> <span id="totalDistance">0 km</span>
             </div>
-            <div class="stat-item">
-                <strong>Durée:</strong> <span id="duration">-</span>
-            </div>
         </div>
     </div>
 
     <div id="map"></div>
+
+    <!-- Loader pour le traitement des fichiers -->
+    <div class="loader-overlay" id="loaderOverlay">
+        <div class="loader-content">
+            <div class="loader-spinner"></div>
+            <div class="loader-text" id="loaderText">Traitement du fichier log en cours...</div>
+            <div class="loader-subtext" id="loaderSubtext">Veuillez patienter pendant l'analyse des données</div>
+        </div>
+    </div>
 
     <!-- Contrôles de la carte -->
     <div class="map-controls">
@@ -370,11 +431,14 @@
         function initMapControls() {
             // Bouton de changement de style
             document.getElementById('toggleStyle').addEventListener('click', function () {
+                // Afficher le loader pendant le changement de style
                 if (currentMapStyle === 'streets') {
+                    showLoader('Chargement vue satellite...', 'Changement de style de carte en cours...');
                     map.setStyle('mapbox://styles/mapbox/satellite-streets-v12');
                     this.textContent = '🗺️ Street';
                     currentMapStyle = 'satellite';
                 } else {
+                    showLoader('Chargement vue street...', 'Changement de style de carte en cours...');
                     map.setStyle('mapbox://styles/mapbox/streets-v11');
                     this.textContent = '🛰️ Satellite';
                     currentMapStyle = 'streets';
@@ -382,13 +446,20 @@
 
                 // Redessiner la trajectoire et les outils de mesure après le changement de style
                 map.once('styledata', function () {
-                    if (trajectoryData.length > 0) {
-                        displayTrajectory();
-                    }
-                    // Réajouter le contrôle Draw après le changement de style
-                    if (draw) {
-                        map.addControl(draw, 'top-left');
-                    }
+                    updateLoader('Restauration des données...', 'Application des trajectoires et outils...');
+
+                    setTimeout(() => {
+                        if (trajectoryData.length > 0) {
+                            displayTrajectory();
+                        }
+                        // Réajouter le contrôle Draw après le changement de style
+                        if (draw) {
+                            map.addControl(draw, 'top-left');
+                        }
+
+                        // Masquer le loader
+                        hideLoader();
+                    }, 300);
                 });
             });
         }
@@ -456,58 +527,75 @@
             const lines = content.split('\n');
             logData = [];
 
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i].trim();
+            // Afficher le loader avec information
+            showLoader(`Analyse de ${lines.length} lignes...`, 'Recherche des données de navigation...');
 
-                // Chercher les lignes avec le format: 23-07-2025 15-27-54 566769 4    29.37   7.06    -10     129.2   131.91       -10.0   off      correct     102.38    left     0.2             5.0
-                // Pattern: date heure timestamp puis les données de navigation
-                const fullNavMatch = line.match(/^(\d{2}-\d{2}-\d{4})\s+(\d{2}-\d{2}-\d{2})\s+(\d+)\s+(\d+)\s+([-\d\.]+)\s+([-\d\.]+)\s+([-\d\.]+)\s+([-\d\.]+)\s+([-\d\.]+)\s+([-\d\.]+)\s+(\w+)\s+(\w+)\s+([-\d\.]+)\s+(\w+)\s+([-\d\.]+)\s+([-\d\.]+)/);
+            // Utiliser setTimeout pour permettre au loader de s'afficher
+            setTimeout(() => {
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i].trim();
 
-                if (fullNavMatch) {
-                    const navInfo = {
-                        date: fullNavMatch[1],
-                        time: fullNavMatch[2],
-                        timestamp: fullNavMatch[3],
-                        gpsQuality: fullNavMatch[4],
-                        rawAngle: parseFloat(fullNavMatch[5]),
-                        resAngle: parseFloat(fullNavMatch[6]),
-                        ordAngle: parseFloat(fullNavMatch[7]),
-                        sumAngle: parseFloat(fullNavMatch[8]),
-                        distance: parseFloat(fullNavMatch[9]),
-                        adapter: parseFloat(fullNavMatch[10]),
-                        smoothie: fullNavMatch[11],
-                        pointStatus: fullNavMatch[12],
-                        deviation: parseFloat(fullNavMatch[13]),
-                        side: fullNavMatch[14],
-                        centroidFactor: parseFloat(fullNavMatch[15]),
-                        cruiseFactor: parseFloat(fullNavMatch[16])
-                    };
-
-                    // Chercher la ligne "Cur:" précédente pour récupérer les coordonnées GPS
-                    for (let j = i - 1; j >= Math.max(0, i - 10); j--) {
-                        const prevLine = lines[j];
-                        const curMatch = prevLine.match(/Cur: \[([^,]+),\s*([^,]+),\s*'([^']+)'\]/);
-                        if (curMatch) {
-                            navInfo.lat = parseFloat(curMatch[1]);
-                            navInfo.lon = parseFloat(curMatch[2]);
-                            navInfo.gpsQualityFromCur = curMatch[3];
-                            break;
-                        }
+                    // Mettre à jour le loader tous les 1000 lignes
+                    if (i % 1000 === 0) {
+                        updateLoader(`Traitement ligne ${i}/${lines.length}`, `${Math.round((i / lines.length) * 100)}% terminé`);
                     }
 
-                    // Ajouter à la liste même si on n'a pas trouvé de coordonnées GPS
-                    logData.push(navInfo);
+                    // Chercher les lignes avec le format: 23-07-2025 15-27-54 566769 4    29.37   7.06    -10     129.2   131.91       -10.0   off      correct     102.38    left     0.2             5.0
+                    // Pattern: date heure timestamp puis les données de navigation
+                    const fullNavMatch = line.match(/^(\d{2}-\d{2}-\d{4})\s+(\d{2}-\d{2}-\d{2})\s+(\d+)\s+(\d+)\s+([-\d\.]+)\s+([-\d\.]+)\s+([-\d\.]+)\s+([-\d\.]+)\s+([-\d\.]+)\s+([-\d\.]+)\s+(\w+)\s+(\w+)\s+([-\d\.]+)\s+(\w+)\s+([-\d\.]+)\s+([-\d\.]+)/);
+
+                    if (fullNavMatch) {
+                        const navInfo = {
+                            date: fullNavMatch[1],
+                            time: fullNavMatch[2],
+                            timestamp: fullNavMatch[3],
+                            gpsQuality: fullNavMatch[4],
+                            rawAngle: parseFloat(fullNavMatch[5]),
+                            resAngle: parseFloat(fullNavMatch[6]),
+                            ordAngle: parseFloat(fullNavMatch[7]),
+                            sumAngle: parseFloat(fullNavMatch[8]),
+                            distance: parseFloat(fullNavMatch[9]),
+                            adapter: parseFloat(fullNavMatch[10]),
+                            smoothie: fullNavMatch[11],
+                            pointStatus: fullNavMatch[12],
+                            deviation: parseFloat(fullNavMatch[13]),
+                            side: fullNavMatch[14],
+                            centroidFactor: parseFloat(fullNavMatch[15]),
+                            cruiseFactor: parseFloat(fullNavMatch[16])
+                        };
+
+                        // Chercher la ligne "Cur:" précédente pour récupérer les coordonnées GPS
+                        for (let j = i - 1; j >= Math.max(0, i - 10); j--) {
+                            const prevLine = lines[j];
+                            const curMatch = prevLine.match(/Cur: \[([^,]+),\s*([^,]+),\s*'([^']+)'\]/);
+                            if (curMatch) {
+                                navInfo.lat = parseFloat(curMatch[1]);
+                                navInfo.lon = parseFloat(curMatch[2]);
+                                navInfo.gpsQualityFromCur = curMatch[3];
+                                break;
+                            }
+                        }
+
+                        // Ajouter à la liste même si on n'a pas trouvé de coordonnées GPS
+                        logData.push(navInfo);
+                    }
                 }
-            }
 
-            console.log(`Données de log chargées: ${logData.length} lignes de navigation trouvées`);
+                console.log(`Données de log chargées: ${logData.length} lignes de navigation trouvées`);
 
-            console.log(logData);
+                // Finaliser le traitement
+                updateLoader('Finalisation...', 'Application des données sur la carte');
 
-            // Rafraîchir l'affichage si des points GPS sont déjà chargés
-            if (trajectoryData.length > 0) {
-                displayTrajectory();
-            }
+                setTimeout(() => {
+                    // Rafraîchir l'affichage si des points GPS sont déjà chargés
+                    if (trajectoryData.length > 0) {
+                        displayTrajectory();
+                    }
+
+                    // Masquer le loader
+                    hideLoader();
+                }, 500);
+            }, 100);
         }        // Traiter le fichier chargé
         function processFile(content) {
             const lines = content.split('\n').filter(line => line.trim());
@@ -907,7 +995,6 @@
                                 <tr><td><strong>Sum Angle:</strong></td><td>${properties.sumAngle}</td></tr>
                                 <tr><td><strong>Distance:</strong></td><td>${properties.distance}</td></tr>
                                 <tr><td><strong>Adapter:</strong></td><td>${properties.adapter}</td></tr>
-                                <tr><td><strong>Smoothie:</strong></td><td>${properties.smoothie}</td></tr>
                                 <tr><td><strong>Status:</strong></td><td>${properties.pointStatus}</td></tr>
                                 <tr><td><strong>Deviation:</strong></td><td>${properties.deviation}</td></tr>
                                 <tr><td><strong>Side:</strong></td><td>${properties.side}</td></tr>
@@ -989,6 +1076,22 @@
             document.getElementById('legend').style.display = 'block';
         }
 
+        // Fonctions pour gérer le loader
+        function showLoader(text = 'Chargement en cours...', subtext = 'Veuillez patienter...') {
+            document.getElementById('loaderText').textContent = text;
+            document.getElementById('loaderSubtext').textContent = subtext;
+            document.getElementById('loaderOverlay').style.display = 'flex';
+        }
+
+        function updateLoader(text, subtext) {
+            document.getElementById('loaderText').textContent = text;
+            document.getElementById('loaderSubtext').textContent = subtext;
+        }
+
+        function hideLoader() {
+            document.getElementById('loaderOverlay').style.display = 'none';
+        }
+
         // Gestionnaire de fichier log
         document.getElementById('logFileInput').addEventListener('change', function (event) {
             const file = event.target.files[0];
@@ -1003,13 +1106,16 @@
                 try {
                     processLogFile(e.target.result);
 
-                    // Message de succès
-                    const successMsg = document.createElement('div');
-                    successMsg.className = 'success';
-                    successMsg.textContent = `✅ Fichier log chargé avec succès! ${logData.length} lignes de navigation trouvées.`;
-                    document.querySelector('.controls').appendChild(successMsg);
+                    // Message de succès (sera affiché après le loader)
+                    setTimeout(() => {
+                        const successMsg = document.createElement('div');
+                        successMsg.className = 'success';
+                        successMsg.textContent = `✅ Fichier log chargé avec succès! ${logData.length} lignes de navigation trouvées.`;
+                        document.querySelector('.controls').appendChild(successMsg);
+                    }, 600);
 
                 } catch (error) {
+                    hideLoader(); // Masquer le loader en cas d'erreur
                     console.error('Erreur lors du traitement du fichier log:', error);
 
                     // Message d'erreur
@@ -1021,6 +1127,7 @@
             };
 
             reader.onerror = function () {
+                hideLoader(); // Masquer le loader en cas d'erreur
                 const errorMsg = document.createElement('div');
                 errorMsg.className = 'error';
                 errorMsg.textContent = '❌ Erreur lors de la lecture du fichier log';
