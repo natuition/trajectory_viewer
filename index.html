@@ -262,6 +262,77 @@
             font-size: 14px;
             color: #666;
         }
+
+        /* Popup d'information des paramètres */
+        .info-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+
+        .info-content {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        .info-close {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .info-close:hover {
+            color: #000;
+        }
+
+        .info-title {
+            font-size: 24px;
+            color: #2faf49;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+
+        .info-param {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-left: 4px solid #2faf49;
+            background-color: #f8f9fa;
+        }
+
+        .info-param-name {
+            font-weight: bold;
+            color: #2faf49;
+            margin-bottom: 5px;
+        }
+
+        .info-param-desc {
+            color: #333;
+            line-height: 1.4;
+        }
     </style>
 </head>
 
@@ -311,6 +382,7 @@
     <!-- Contrôles de la carte -->
     <div class="map-controls">
         <button id="toggleStyle" class="map-control-button">🛰️ Satellite</button>
+        <button id="showInfo" class="map-control-button">ℹ️ Information</button>
     </div>
 
     <!-- Informations de mesure -->
@@ -327,6 +399,98 @@
         <p><strong>Fin:</strong> <span id="endPoint">-</span></p>
         <p><strong>Points totaux:</strong> <span id="totalPoints">-</span></p>
         <p><strong>Distance totale:</strong> <span id="totalDistanceInfo">-</span></p>
+    </div>
+
+    <!-- Popup d'information des paramètres -->
+    <div class="info-overlay" id="infoOverlay">
+        <div class="info-content">
+            <button class="info-close" id="infoClose">×</button>
+            <div class="info-title">📊 Explication des Paramètres de Navigation</div>
+
+            <div class="info-param">
+                <div class="info-param-name">Date/Heure</div>
+                <div class="info-param-desc">Date et heure de l'enregistrement du point gps au format
+                    DD-MM-YYYY HH-MM-SS.</div>
+            </div>
+
+            <div class="info-param">
+                <div class="info-param-name">Timestamp</div>
+                <div class="info-param-desc">Horodatage en millisecondes du point gps.
+                </div>
+            </div>
+
+            <div class="info-param">
+                <div class="info-param-name">GPS</div>
+                <div class="info-param-desc">
+                    Coordonnées GPS [latitude, longitude, qualité] où la qualité indique la précision du signal :
+                    <ul>
+                        <li>1
+                            = Fix GPS standard</li>
+                        <li>2 = Correction différentielle (DGNSS : 1-3m en
+                            conditions
+                            optimales), </li>
+                        <li>3 = Fix 3D
+                            standard (5-10m en conditions optimales), </li>
+                        <li>4 = RTK fixe (1-2cm en conditions optimales), </li>
+                        <li>5 = RTK
+                            flottant (10-30cm en conditions optimales).</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="info-param">
+                <div class="info-param-name">Raw Angle</div>
+                <div class="info-param-desc">Angle calculé par l'automatique.
+                </div>
+            </div>
+
+            <div class="info-param">
+                <div class="info-param-name">Res Angle</div>
+                <div class="info-param-desc">Angle KP/KI.</div>
+            </div>
+
+            <div class="info-param">
+                <div class="info-param-name">Ord Angle</div>
+                <div class="info-param-desc">Angle envoyés aux roues (négatif : le robot tourne vers la droite, positif
+                    :
+                    le robot tourne vers la gauche).</div>
+            </div>
+
+            <div class="info-param">
+                <div class="info-param-name">Sum Angle</div>
+                <div class="info-param-desc">Sommes cumulée des angles (KI).</div>
+            </div>
+
+            <div class="info-param">
+                <div class="info-param-name">Distance</div>
+                <div class="info-param-desc">Distance entre le point actuelle et le point visé.</div>
+            </div>
+
+            <div class="info-param">
+                <div class="info-param-name">Adapter</div>
+                <div class="info-param-desc">Angle envoyé aux roues à l'itération précédente (négatif : le robot tourne
+                    vers la droite, positif
+                    :
+                    le robot tourne vers la gauche).</div>
+            </div>
+
+            <div class="info-param">
+                <div class="info-param-name">Deviation</div>
+                <div class="info-param-desc">Distance perpendiculaire entre le robot et la trajectoire suivi.
+                </div>
+            </div>
+
+            <div class="info-param">
+                <div class="info-param-name">Side</div>
+                <div class="info-param-desc">Position du robot par rapport à la trajectoire suivi (left ou right).</div>
+            </div>
+
+            <div class="info-param">
+                <div class="info-param-name">Point status</div>
+                <div class="info-param-desc">Status du point GPS (skipped : point non cohérent et donc non pris en
+                    compte, correct : point cohérent et donc pris en compte).</div>
+            </div>
+        </div>
     </div>
 
     <div class="legend" id="legend" style="display: none;">
@@ -492,6 +656,29 @@
                         hideLoader();
                     }, 300);
                 });
+            });
+
+            // Bouton d'information
+            document.getElementById('showInfo').addEventListener('click', function () {
+                document.getElementById('infoOverlay').style.display = 'flex';
+            });
+
+            // Fermer la popup d'information
+            document.getElementById('infoClose').addEventListener('click', function () {
+                document.getElementById('infoOverlay').style.display = 'none';
+            });
+
+            // Fermer la popup d'information en cliquant sur l'overlay
+            document.getElementById('infoOverlay').addEventListener('click', function (e) {
+                // Fermer si on clique sur l'overlay (arrière-plan) ou directement sur infoOverlay
+                if (e.target === this || e.target.classList.contains('info-overlay')) {
+                    this.style.display = 'none';
+                }
+            });
+
+            // Empêcher la fermeture si on clique à l'intérieur du contenu
+            document.getElementById('infoOverlay').querySelector('.info-content').addEventListener('click', function (e) {
+                e.stopPropagation();
             });
         }
 
@@ -1077,7 +1264,7 @@
             const coordinates = e.features[0].geometry.coordinates.slice();
 
             const popupContent = `
-                <div style="font-family: monospace; font-size: 12px; max-width: 350px;">
+                <div style="font-family: monospace; font-size: 12px; max-width: 400px;">
                     <h4 style="margin: 0 0 10px 0; color: #2faf49;">Informations de Navigation</h4>
                     <table style="width: 100%; font-size: 11px;">
                         <tr><td><strong>Date/Heure:</strong></td><td>${properties.date} ${properties.time}</td></tr>
@@ -1089,11 +1276,9 @@
                         <tr><td><strong>Sum Angle:</strong></td><td>${properties.sumAngle}</td></tr>
                         <tr><td><strong>Distance:</strong></td><td>${properties.distance}</td></tr>
                         <tr><td><strong>Adapter:</strong></td><td>${properties.adapter}</td></tr>
-                        <tr><td><strong>Status:</strong></td><td>${properties.pointStatus}</td></tr>
                         <tr><td><strong>Deviation:</strong></td><td>${properties.deviation}</td></tr>
                         <tr><td><strong>Side:</strong></td><td>${properties.side}</td></tr>
-                        <tr><td><strong>Centroid:</strong></td><td>${properties.centroidFactor}</td></tr>
-                        <tr><td><strong>Cruise:</strong></td><td>${properties.cruiseFactor}</td></tr>
+                        <tr><td><strong>Point status:</strong></td><td>${properties.pointStatus}</td></tr>
                     </table>
                 </div>
             `;
