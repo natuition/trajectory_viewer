@@ -955,113 +955,160 @@
         // Ajouter des marqueurs interactifs avec les informations du log
         function addInteractiveMarkers() {
             // Supprimer les marqueurs existants
-            if (map.getSource('nav-points')) {
-                map.removeLayer('nav-points');
-                map.removeSource('nav-points');
+            if (map.getSource('nav-points-quality-4')) {
+                map.removeLayer('nav-points-quality-4');
+                map.removeSource('nav-points-quality-4');
+            }
+            if (map.getSource('nav-points-other-quality')) {
+                map.removeLayer('nav-points-other-quality');
+                map.removeSource('nav-points-other-quality');
             }
 
-            const features = [];
+            const featuresQuality4 = [];
+            const featuresOtherQuality = [];
 
             trajectoryData.forEach((point, index) => {
-                // Chercher dans logData les entrées qui correspondent à ce point GPS
-                const matchingLogEntries = logData.filter(logEntry => {
-                    if (!logEntry.lat || !logEntry.lon) return false;
+                // Chercher directement dans logData l'entrée qui correspond exactement à ce point GPS
+                const navInfo = logData.find(logEntry =>
+                    logEntry.lat === point.lat && logEntry.lon === point.lon
+                );
 
-                    // Tolérance pour la correspondance GPS (environ 1 mètre)
-                    const latDiff = Math.abs(logEntry.lat - point.lat);
-                    const lonDiff = Math.abs(logEntry.lon - point.lon);
-                    return latDiff < 0.00001 && lonDiff < 0.00001;
-                });
+                if (navInfo) {
 
-                if (matchingLogEntries.length > 0) {
-                    // Prendre la première entrée correspondante (ou on pourrait faire une moyenne)
-                    const navInfo = matchingLogEntries[0];
-
-                    features.push({
+                    const feature = {
                         type: 'Feature',
                         properties: {
                             ...navInfo,
                             lat: point.lat,
                             lon: point.lon,
-                            index: index,
-                            matchCount: matchingLogEntries.length
+                            index: index
                         },
                         geometry: {
                             type: 'Point',
                             coordinates: [point.lon, point.lat]
                         }
-                    });
+                    };
+
+                    // Séparer selon la qualité GPS
+                    if (point.thirdValue === '4') {
+                        featuresQuality4.push(feature);
+                    } else {
+                        featuresOtherQuality.push(feature);
+                    }
                 }
             });
 
-            if (features.length > 0) {
-                map.addSource('nav-points', {
+            // Ajouter les marqueurs qualité 4 (vert)
+            if (featuresQuality4.length > 0) {
+                map.addSource('nav-points-quality-4', {
                     type: 'geojson',
                     data: {
                         type: 'FeatureCollection',
-                        features: features
+                        features: featuresQuality4
                     }
                 });
 
                 map.addLayer({
-                    id: 'nav-points',
+                    id: 'nav-points-quality-4',
                     type: 'circle',
-                    source: 'nav-points',
+                    source: 'nav-points-quality-4',
                     paint: {
                         'circle-radius': 3,
-                        'circle-color': '#ffffff',
-                        'circle-stroke-color': '#000000',
+                        'circle-color': '#10b981', // Vert clair comme les lignes
                         'circle-stroke-width': 1,
-                        'circle-opacity': 0.8
+                        'circle-stroke-color': '#ffffff',
+                        'circle-opacity': 0.9
                     }
                 });
 
-                // Ajouter les événements de survol
-                map.on('mouseenter', 'nav-points', (e) => {
+                // Ajouter les événements de survol pour qualité 4
+                map.on('mouseenter', 'nav-points-quality-4', (e) => {
                     map.getCanvas().style.cursor = 'pointer';
-
-                    const properties = e.features[0].properties;
-                    const coordinates = e.features[0].geometry.coordinates.slice();
-
-                    const popupContent = `
-                        <div style="font-family: monospace; font-size: 12px; max-width: 350px;">
-                            <h4 style="margin: 0 0 10px 0; color: #2faf49;">Informations de Navigation</h4>
-                            <table style="width: 100%; font-size: 11px;">
-                                <tr><td><strong>Date/Heure:</strong></td><td>${properties.date} ${properties.time}</td></tr>
-                                <tr><td><strong>Timestamp:</strong></td><td>${properties.timestamp}</td></tr>
-                                <tr><td><strong>GPS:</strong></td><td>[${properties.lat.toFixed(7)}, ${properties.lon.toFixed(7)}, '${properties.gpsQualityFromCur || properties.gpsQuality}']</td></tr>
-                                <tr><td><strong>Raw Angle:</strong></td><td>${properties.rawAngle}</td></tr>
-                                <tr><td><strong>Res Angle:</strong></td><td>${properties.resAngle}</td></tr>
-                                <tr><td><strong>Ord Angle:</strong></td><td>${properties.ordAngle}</td></tr>
-                                <tr><td><strong>Sum Angle:</strong></td><td>${properties.sumAngle}</td></tr>
-                                <tr><td><strong>Distance:</strong></td><td>${properties.distance}</td></tr>
-                                <tr><td><strong>Adapter:</strong></td><td>${properties.adapter}</td></tr>
-                                <tr><td><strong>Status:</strong></td><td>${properties.pointStatus}</td></tr>
-                                <tr><td><strong>Deviation:</strong></td><td>${properties.deviation}</td></tr>
-                                <tr><td><strong>Side:</strong></td><td>${properties.side}</td></tr>
-                                <tr><td><strong>Centroid:</strong></td><td>${properties.centroidFactor}</td></tr>
-                                <tr><td><strong>Cruise:</strong></td><td>${properties.cruiseFactor}</td></tr>
-                                ${properties.matchCount > 1 ? `<tr><td colspan="2"><em>${properties.matchCount} entrées trouvées</em></td></tr>` : ''}
-                            </table>
-                        </div>
-                    `;
-
-                    new mapboxgl.Popup()
-                        .setLngLat(coordinates)
-                        .setHTML(popupContent)
-                        .addTo(map);
+                    showNavPopup(e);
                 });
 
-                map.on('mouseleave', 'nav-points', () => {
+                map.on('mouseleave', 'nav-points-quality-4', () => {
                     map.getCanvas().style.cursor = '';
-                    // Fermer tous les popups
-                    const popups = document.getElementsByClassName('mapboxgl-popup');
-                    for (let i = popups.length - 1; i >= 0; i--) {
-                        popups[i].remove();
+                    closeNavPopups();
+                });
+            }
+
+            // Ajouter les marqueurs autre qualité (orange)
+            if (featuresOtherQuality.length > 0) {
+                map.addSource('nav-points-other-quality', {
+                    type: 'geojson',
+                    data: {
+                        type: 'FeatureCollection',
+                        features: featuresOtherQuality
                     }
                 });
 
-                console.log(`${features.length} marqueurs interactifs ajoutés sur la carte`);
+                map.addLayer({
+                    id: 'nav-points-other-quality',
+                    type: 'circle',
+                    source: 'nav-points-other-quality',
+                    paint: {
+                        'circle-radius': 3,
+                        'circle-color': '#f97316', // Orange comme les lignes
+                        'circle-stroke-width': 1,
+                        'circle-stroke-color': '#ffffff',
+                        'circle-opacity': 0.9
+                    }
+                });
+
+                // Ajouter les événements de survol pour autre qualité
+                map.on('mouseenter', 'nav-points-other-quality', (e) => {
+                    map.getCanvas().style.cursor = 'pointer';
+                    showNavPopup(e);
+                });
+
+                map.on('mouseleave', 'nav-points-other-quality', () => {
+                    map.getCanvas().style.cursor = '';
+                    closeNavPopups();
+                });
+            }
+
+            console.log(`${featuresQuality4.length} marqueurs qualité 4 (verts) et ${featuresOtherQuality.length} marqueurs autre qualité (orange) ajoutés sur la carte`);
+        }
+
+        // Fonction pour afficher le popup de navigation
+        function showNavPopup(e) {
+            const properties = e.features[0].properties;
+            const coordinates = e.features[0].geometry.coordinates.slice();
+
+            const popupContent = `
+                <div style="font-family: monospace; font-size: 12px; max-width: 350px;">
+                    <h4 style="margin: 0 0 10px 0; color: #2faf49;">Informations de Navigation</h4>
+                    <table style="width: 100%; font-size: 11px;">
+                        <tr><td><strong>Date/Heure:</strong></td><td>${properties.date} ${properties.time}</td></tr>
+                        <tr><td><strong>Timestamp:</strong></td><td>${properties.timestamp}</td></tr>
+                        <tr><td><strong>GPS:</strong></td><td>[${properties.lat.toFixed(7)}, ${properties.lon.toFixed(7)}, '${properties.gpsQuality || properties.gpsQualityFromCur}']</td></tr>
+                        <tr><td><strong>Raw Angle:</strong></td><td>${properties.rawAngle}</td></tr>
+                        <tr><td><strong>Res Angle:</strong></td><td>${properties.resAngle}</td></tr>
+                        <tr><td><strong>Ord Angle:</strong></td><td>${properties.ordAngle}</td></tr>
+                        <tr><td><strong>Sum Angle:</strong></td><td>${properties.sumAngle}</td></tr>
+                        <tr><td><strong>Distance:</strong></td><td>${properties.distance}</td></tr>
+                        <tr><td><strong>Adapter:</strong></td><td>${properties.adapter}</td></tr>
+                        <tr><td><strong>Status:</strong></td><td>${properties.pointStatus}</td></tr>
+                        <tr><td><strong>Deviation:</strong></td><td>${properties.deviation}</td></tr>
+                        <tr><td><strong>Side:</strong></td><td>${properties.side}</td></tr>
+                        <tr><td><strong>Centroid:</strong></td><td>${properties.centroidFactor}</td></tr>
+                        <tr><td><strong>Cruise:</strong></td><td>${properties.cruiseFactor}</td></tr>
+                    </table>
+                </div>
+            `;
+
+            new mapboxgl.Popup()
+                .setLngLat(coordinates)
+                .setHTML(popupContent)
+                .addTo(map);
+        }
+
+        // Fonction pour fermer les popups de navigation
+        function closeNavPopups() {
+            const popups = document.getElementsByClassName('mapboxgl-popup');
+            for (let i = popups.length - 1; i >= 0; i--) {
+                popups[i].remove();
             }
         }        // Mettre à jour les statistiques
         function updateStats(totalDistance) {
